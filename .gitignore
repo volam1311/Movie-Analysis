@@ -14,3 +14,5 @@ logs/
 movie_dbt/target/
 movie_dbt/dbt_packages/
 movie_dbt/logs/
+GUIDE.md
+GUIDE.pdf
