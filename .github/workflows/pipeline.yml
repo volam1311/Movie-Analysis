@@ -1,0 +1,91 @@
+name: pipeline
+
+# Full ELT run: TMDB -> bronze -> DuckDB -> dbt build (tests) -> Databricks gold.
+on:
+  schedule:
+    # Sunday 20:00 UTC = Monday 06:00 UTC+10, same slot as dags/movie_etl.py.
+    - cron: "0 20 * * 0"
+  workflow_dispatch:
+    inputs:
+      publish:
+        description: "Publish gold tables to Databricks"
+        type: boolean
+        default: true
+
+permissions:
+  contents: read
+
+# Never run two pipelines at once; a second trigger waits for the first.
+concurrency:
+  group: pipeline
+  cancel-in-progress: false
+
+jobs:
+  run:
+    runs-on: ubuntu-latest
+    timeout-minutes: 90
+    env:
+      READACCESS_TOKEN: ${{ secrets.READACCESS_TOKEN }}
+      DATABRICKS_SERVER_HOSTNAME: ${{ secrets.DATABRICKS_SERVER_HOSTNAME }}
+      DATABRICKS_HTTP_PATH: ${{ secrets.DATABRICKS_HTTP_PATH }}
+      DATABRICKS_TOKEN: ${{ secrets.DATABRICKS_TOKEN }}
+      DATABRICKS_CATALOG: ${{ secrets.DATABRICKS_CATALOG }}
+      DATABRICKS_SCHEMA: ${{ secrets.DATABRICKS_SCHEMA }}
+      # Scheduled runs have no inputs, so they publish by default.
+      SKIP_PUBLISH: ${{ github.event_name == 'workflow_dispatch' && !inputs.publish && '1' || '0' }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: docker/setup-buildx-action@v3
+
+      - name: Build image
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          load: true
+          tags: movie-pipeline:run
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+      - name: Run pipeline
+        # `-e NAME` with no value passes the variable through from the job env,
+        # so secret values never appear on the command line.
+        run: |
+          docker run --name pipeline \
+            -e READACCESS_TOKEN \
+            -e DATABRICKS_SERVER_HOSTNAME \
+            -e DATABRICKS_HTTP_PATH \
+            -e DATABRICKS_TOKEN \
+            -e DATABRICKS_CATALOG \
+            -e DATABRICKS_SCHEMA \
+            -e SKIP_PUBLISH \
+            movie-pipeline:run
+
+      - name: Copy outputs out of the container
+        if: always()
+        run: |
+          mkdir -p out
+          docker cp pipeline:/app/logs out/logs || true
+          docker cp pipeline:/app/data/bronze out/bronze || true
+          docker cp pipeline:/app/movie_dbt/target/run_results.json out/dbt_run_results.json || true
+          docker cp pipeline:/app/movie_dbt/logs/dbt.log out/dbt.log || true
+
+      - name: Upload logs
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: logs-${{ github.run_number }}
+          path: |
+            out/logs
+            out/dbt_run_results.json
+            out/dbt.log
+          if-no-files-found: ignore
+          retention-days: 30
+
+      - name: Upload bronze snapshot
+        if: success()
+        uses: actions/upload-artifact@v4
+        with:
+          name: bronze-${{ github.run_number }}
+          path: out/bronze
+          retention-days: 90

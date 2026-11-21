@@ -1,7 +1,9 @@
-requests
-python-dotenv
-pandas
-pyarrow
-duckdb
-dbt-duckdb
-databricks-sql-connector
+requests==2.34.2
+python-dotenv==1.2.4
+pandas==3.1.1
+pyarrow==26.0.1
+duckdb==2.0.0
+dbt-core==1.12.7
+dbt-duckdb==1.11.1
+databricks-sql-connector==4.9.0
+certifi==2026.10.23

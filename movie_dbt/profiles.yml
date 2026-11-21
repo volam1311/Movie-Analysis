@@ -1,0 +1,15 @@
+# Shared dbt profile for local runs, Airflow, Docker and GitHub Actions.
+# No secrets here: DuckDB is a local file.
+#
+# The default path is relative to the directory dbt runs from, so always run
+# dbt from inside movie_dbt/ (the Airflow DAG and scripts/run_pipeline.sh do).
+# It resolves to <project root>/data/warehouse.duckdb, the same file src/load.py writes.
+# Set DUCKDB_PATH to point somewhere else.
+movie_dbt:
+  target: dev
+  outputs:
+    dev:
+      type: duckdb
+      path: "{{ env_var('DUCKDB_PATH', '../data/warehouse.duckdb') }}"
+      schema: main
+      threads: 1

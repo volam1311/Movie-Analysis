@@ -1,0 +1,32 @@
+# Secrets: passed at run time, never copied into the image
+.env
+.env.*
+
+# Local environments and tooling
+.venv/
+.venv-airflow/
+venv/
+.airflow/
+.git/
+.github/
+__pycache__/
+*.pyc
+.DS_Store
+
+# Data and build output: the container makes its own
+data/
+logs/
+*.duckdb
+*.duckdb.wal
+movie_dbt/target/
+movie_dbt/dbt_packages/
+movie_dbt/logs/
+
+# Not part of the pipeline
+dags/
+dashboard/
+GUIDE.md
+GUIDE.pdf
+*.hyper
+*.twbx
+*.pbix
