@@ -1,0 +1,28 @@
+version: 2
+
+models:
+  - name: fact_movie
+    description: One row per movie. Profit and roi are null when budget or revenue is unknown.
+    columns:
+      - name: movie_id
+        data_tests:
+          - unique
+          - not_null
+
+  - name: bridge_movie_genre
+    description: One row per movie per genre. Revenue is not on this table.
+    columns:
+      - name: movie_id
+        data_tests:
+          - not_null
+      - name: genre_id
+        data_tests:
+          - not_null
+
+  - name: dim_language
+    description: One row per original language code that appears on a movie.
+    columns:
+      - name: language_code
+        data_tests:
+          - unique
+          - not_null

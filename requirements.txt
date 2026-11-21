@@ -4,3 +4,4 @@ pandas
 pyarrow
 duckdb
 dbt-duckdb
+databricks-sql-connector
