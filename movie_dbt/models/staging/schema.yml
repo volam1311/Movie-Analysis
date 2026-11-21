@@ -1,0 +1,39 @@
+version: 2
+
+models:
+  - name: stg_movie
+    description: One row per movie, cleaned from raw.movie_detail. Zero budget/revenue/runtime become NULL.
+    columns:
+      - name: movie_id
+        description: TMDB movie id.
+        data_tests:
+          - unique
+          - not_null
+      - name: title
+        data_tests:
+          - not_null
+      - name: budget
+        description: USD; NULL when TMDB reports 0 (unknown).
+      - name: revenue
+        description: USD; NULL when TMDB reports 0 (unknown).
+
+  - name: stg_movie_genre
+    description: One row per (movie, genre), unnested from raw.movie_detail.genres.
+    data_tests:
+      - unique:
+          arguments:
+            column_name: "movie_id || '-' || genre_id"
+    columns:
+      - name: movie_id
+        data_tests:
+          - not_null
+          - relationships:
+              arguments:
+                to: ref('stg_movie')
+                field: movie_id
+      - name: genre_id
+        data_tests:
+          - not_null
+      - name: genre_name
+        data_tests:
+          - not_null

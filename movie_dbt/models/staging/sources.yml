@@ -1,0 +1,7 @@
+version: 2
+sources:
+  - name: tmdb
+    schema: raw
+    tables:
+    - name: movie_detail
+      description: One row per movie details. Budget 0 is still 0.
