@@ -1,7 +1,9 @@
 import json
 import sys
+from datetime import date
+from pathlib import Path
 
-from src.config import BRONZE, PAGE_CAP, ROOT
+from src.config import BRONZE, ROOT
 
 DISCOVER_DIR = BRONZE / "discover"
 MOVIE_DIR = BRONZE / "movie"
@@ -9,7 +11,7 @@ MANIFEST = BRONZE / "discover_manifest.json"
 FAILURE_LOG = ROOT / "logs" / "detail_failures.txt"
 
 REQUIRED_DETAIL_KEYS = ("id", "title", "genres")
-MAX_DETAIL_FAILURES = 5  # "a handful"
+MAX_FAILURE_FRACTION = 0.05  # a full-range crawl can have more than a handful of 404s
 
 failures = []
 
@@ -30,15 +32,18 @@ def read_json(path):
         return None
 
 
-def validate_discover():
-    files = sorted(DISCOVER_DIR.glob("page=*.json"))
-    check("discover file count", len(files) == PAGE_CAP,
-          f"{len(files)} files, expected PAGE_CAP={PAGE_CAP}")
+def parse_discover_name(path):
+    gte_part, lte_part, page_part = path.stem.split("_")
+    return (
+        gte_part.split("=", 1)[1],
+        lte_part.split("=", 1)[1],
+        int(page_part.split("=", 1)[1]),
+    )
 
-    expected_names = {f"page={p:04d}.json" for p in range(1, PAGE_CAP + 1)}
-    missing = sorted(expected_names - {f.name for f in files})
-    check("discover pages complete", not missing,
-          f"missing {missing}" if missing else f"pages 1..{PAGE_CAP} present")
+
+def validate_discover():
+    files = sorted(DISCOVER_DIR.glob("gte=*_page=*.json"))
+    check("discover file count", bool(files), f"{len(files)} window page files")
 
     payloads = {}
     bad_json = []
@@ -51,28 +56,47 @@ def validate_discover():
     check("discover JSON parses", not bad_json,
           f"invalid/empty: {bad_json}" if bad_json else f"{len(files)} files OK")
 
-    wrong_page, empty_results = [], []
-    for f, data in payloads.items():
-        file_page = int(f.stem.split("=")[1])
-        if data.get("page") != file_page:
-            wrong_page.append(f"{f.name} has page={data.get('page')}")
-        last_page = min(PAGE_CAP, data.get("total_pages", PAGE_CAP))
-        if file_page < last_page and not data.get("results"):
-            empty_results.append(f.name)
+    windows = {}
+    for path, data in payloads.items():
+        gte, lte, page = parse_discover_name(path)
+        windows.setdefault((gte, lte), []).append((page, path, data))
+
+    missing_pages, wrong_page, empty_results = [], [], []
+    for (gte, lte), items in sorted(windows.items()):
+        total_pages = int(items[0][2].get("total_pages") or 0)
+        have = {page for page, _, _ in items}
+        missing = sorted(set(range(1, total_pages + 1)) - have)
+        if missing:
+            missing_pages.append(f"{gte}..{lte} missing {missing[:5]}")
+        for page, path, data in items:
+            if data.get("page") != page:
+                wrong_page.append(f"{path.name} has page={data.get('page')}")
+            if page < total_pages and not data.get("results"):
+                empty_results.append(path.name)
+    check("discover pages complete", not missing_pages,
+          "; ".join(missing_pages[:5]) if missing_pages else f"{len(windows)} windows complete")
     check("discover page number", not wrong_page,
-          "; ".join(wrong_page) if wrong_page else "filename matches 'page' field")
+          "; ".join(wrong_page[:5]) if wrong_page else "filename matches 'page' field")
     check("discover results present", not empty_results,
-          f"empty before last page: {empty_results}" if empty_results
+          f"empty before last page: {empty_results[:5]}" if empty_results
           else "every page before the last has results")
 
     manifest = read_json(MANIFEST)
     if manifest is None:
         check("discover manifest", False, f"{MANIFEST.name} missing or invalid")
     else:
-        ok = manifest.get("page_cap") == PAGE_CAP and len(manifest.get("files", [])) == PAGE_CAP
+        manifest_names = {Path(item).name for item in manifest.get("files", [])}
+        disk_names = {path.name for path in files}
+        try:
+            start = date.fromisoformat(manifest.get("release_start") or "")
+            end = date.fromisoformat(manifest.get("release_end") or "")
+            dates_ok = start <= end
+        except ValueError:
+            dates_ok = False
+        ok = dates_ok and manifest_names == disk_names and bool(disk_names)
         check("discover manifest", ok,
-              f"page_cap={manifest.get('page_cap')}, files={len(manifest.get('files', []))}, "
-              f"extracted_at={manifest.get('extracted_at')}")
+              f"{manifest.get('release_start')}..{manifest.get('release_end')}, "
+              f"files={len(manifest_names)}, extracted_at={manifest.get('extracted_at')}")
 
     ids = set()
     for data in payloads.values():
@@ -122,9 +146,10 @@ def validate_details(discover_ids):
 
     failed = logged_failures()
     failed_now = {i: s for i, s in failed.items() if i in discover_ids and i not in detail_ids}
-    check("details failure count", len(failed_now) <= MAX_DETAIL_FAILURES,
-          f"{len(failed_now)} logged failures (max {MAX_DETAIL_FAILURES})"
-          + (f": {failed_now}" if failed_now else ""))
+    failure_limit = max(5, int(len(discover_ids) * MAX_FAILURE_FRACTION))
+    check("details failure count", len(failed_now) <= failure_limit,
+          f"{len(failed_now)} logged failures (max {failure_limit})"
+          + (f": {list(failed_now)[:10]}" if failed_now else ""))
 
     unaccounted = sorted(discover_ids - detail_ids - set(failed_now))
     check("details cover discover ids", not unaccounted,
@@ -135,7 +160,7 @@ def validate_details(discover_ids):
 
 
 def main():
-    print(f"validate bronze: PAGE_CAP={PAGE_CAP}")
+    print("validate bronze")
     discover_ids = validate_discover()
     validate_details(discover_ids)
     if failures:
