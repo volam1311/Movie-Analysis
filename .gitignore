@@ -16,3 +16,9 @@ movie_dbt/dbt_packages/
 movie_dbt/logs/
 GUIDE.md
 GUIDE.pdf
+# Power BI (PBIP) local-only files: data cache, personal settings, old binary
+dashboard/**/.pbi/cache.abf
+dashboard/**/.pbi/localSettings.json
+dashboard/*.pbix
+dashboard/dashboard.Report/
+dashboard/dashboard.SemanticModel/
