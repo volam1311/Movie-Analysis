@@ -3,8 +3,13 @@ name: pipeline
 # Full ELT run: TMDB -> bronze -> DuckDB -> dbt build (tests) -> Databricks gold.
 on:
   schedule:
-    # Sunday 20:00 UTC = Monday 06:00 UTC+10, same slot as dags/movie_etl.py.
-    - cron: "0 20 * * 0"
+    # GitHub can delay or drop scheduled runs, especially at :00, so the main
+    # slot sits off the hour and a second slot retries a few hours later.
+    # Sunday 20:17 UTC = Monday 06:17 UTC+10 (main run).
+    - cron: "17 20 * * 0"
+    # Sunday 23:17 UTC = Monday 09:17 UTC+10 (fallback; skipped by the guard
+    # job if a run already succeeded in the last 20 hours).
+    - cron: "17 23 * * 0"
   workflow_dispatch:
     inputs:
       publish:
@@ -14,6 +19,7 @@ on:
 
 permissions:
   contents: read
+  actions: read  # guard job lists earlier runs of this workflow
 
 # Never run two pipelines at once; a second trigger waits for the first.
 concurrency:
@@ -21,7 +27,34 @@ concurrency:
   cancel-in-progress: false
 
 jobs:
+  # Scheduled runs only: skip if this workflow already succeeded recently, so
+  # the fallback cron does not repeat a run that the main cron completed.
+  # Manual runs always go ahead.
+  guard:
+    runs-on: ubuntu-latest
+    outputs:
+      skip: ${{ steps.check.outputs.skip }}
+    steps:
+      - id: check
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          if [ "${{ github.event_name }}" != "schedule" ]; then
+            echo "skip=false" >> "$GITHUB_OUTPUT"; exit 0
+          fi
+          since=$(date -u -d '-20 hours' +%Y-%m-%dT%H:%M:%SZ)
+          count=$(gh run list --repo "$GITHUB_REPOSITORY" --workflow pipeline.yml \
+            --status success --created ">=$since" --json databaseId --jq 'length')
+          echo "Successful runs since $since: $count"
+          if [ "$count" -gt 0 ]; then
+            echo "skip=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "skip=false" >> "$GITHUB_OUTPUT"
+          fi
+
   run:
+    needs: guard
+    if: needs.guard.outputs.skip != 'true'
     runs-on: ubuntu-latest
     timeout-minutes: 180  # ~10k detail calls at 0.25s spacing take about an hour
     env:

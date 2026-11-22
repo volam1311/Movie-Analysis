@@ -138,7 +138,7 @@ Modelling rules:
 
 ## Schedule and orchestration
 
-[`.github/workflows/pipeline.yml`](.github/workflows/pipeline.yml) runs the pipeline in Docker on a GitHub-hosted machine every **Monday at 06:00 UTC+10** (Sunday 20:00 UTC), so no local machine needs to be on. It can also be started by hand from the Actions tab, with publishing turned on or off.
+[`.github/workflows/pipeline.yml`](.github/workflows/pipeline.yml) runs the pipeline in Docker on a GitHub-hosted machine every **Monday at 06:17 UTC+10** (Sunday 20:17 UTC), so no local machine needs to be on. GitHub sometimes delays or drops scheduled runs, so a fallback schedule at 09:17 UTC+10 retries the run, but only if no run has succeeded in the previous 20 hours. It can also be started by hand from the Actions tab, with publishing turned on or off.
 
 ```mermaid
 sequenceDiagram
