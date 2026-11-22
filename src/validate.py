@@ -93,8 +93,10 @@ def validate_discover():
             dates_ok = start <= end
         except ValueError:
             dates_ok = False
-        ok = dates_ok and manifest_names == disk_names and bool(disk_names)
+        complete = manifest.get("status") == "complete"
+        ok = complete and dates_ok and manifest_names == disk_names and bool(disk_names)
         check("discover manifest", ok,
+              f"status={manifest.get('status')}, "
               f"{manifest.get('release_start')}..{manifest.get('release_end')}, "
               f"files={len(manifest_names)}, extracted_at={manifest.get('extracted_at')}")
 

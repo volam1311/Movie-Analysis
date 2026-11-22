@@ -23,7 +23,7 @@ concurrency:
 jobs:
   run:
     runs-on: ubuntu-latest
-    timeout-minutes: 90
+    timeout-minutes: 180  # ~10k detail calls at 0.25s spacing take about an hour
     env:
       READACCESS_TOKEN: ${{ secrets.READACCESS_TOKEN }}
       DATABRICKS_SERVER_HOSTNAME: ${{ secrets.DATABRICKS_SERVER_HOSTNAME }}

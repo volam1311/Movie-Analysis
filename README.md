@@ -68,7 +68,11 @@ flowchart TD
     E --> F["Fetch details for every<br/>unique movie id"]
 ```
 
-On a local machine, movie details already in `data/bronze/movie/` are skipped, so a re-run only fetches new movies.
+Only movies with at least `MIN_VOTE_COUNT` TMDB votes (default 50, in `src/config.py`) are kept. That is about 9.7k movies from 2018 and leaves out obscure titles that have no budget or revenue data.
+
+If a crawl is interrupted, the next run with the same start date and filters resumes it. The end date is fixed when the crawl starts, so a resume the next day splits the windows the same way and skips every page already saved. A run after a finished crawl, or with different settings, starts a new crawl and clears the old Discover pages. `--fresh` forces a new crawl.
+
+On a local machine, movie details already in `data/bronze/movie/` are skipped, so a re-run only fetches new movies. The load step only reads details for movies in the current crawl.
 
 ## Data model
 
@@ -220,21 +224,27 @@ Or run one step at a time:
 ```bash
 python -m src.extract                      # crawl from 2018-01-01 to today
 python -m src.extract --start 2000-01-01   # different start date, still ending today
+python -m src.extract --min-votes 20       # wider vote filter (more movies, longer run)
+python -m src.extract --fresh              # new crawl instead of resuming an unfinished one
 python -m src.validate
 python -m src.load
 cd movie_dbt && dbt build && cd ..         # staging + marts + tests
 python -m src.export_gold
 ```
 
-The default start date is `RELEASE_START` in `src/config.py`.
+The default start date is `RELEASE_START` and the default vote filter is `MIN_VOTE_COUNT`, both in `src/config.py`.
 
 ## Docker
 
 ```bash
 docker build -t movie-pipeline .
-docker run --rm --env-file .env -e SKIP_PUBLISH=1 movie-pipeline   # test run, no Databricks writes
-docker run --rm --env-file .env movie-pipeline                     # full run, publishes gold
+# test run, no Databricks writes
+docker run --rm --env-file .env -e SKIP_PUBLISH=1 -v movie-data:/app/data -v movie-logs:/app/logs movie-pipeline
+# full run, publishes gold
+docker run --rm --env-file .env -v movie-data:/app/data -v movie-logs:/app/logs movie-pipeline
 ```
+
+The `movie-data` volume keeps `data/` between containers, so an interrupted run resumes and later runs skip movie details they already have. Without `-v`, every container starts from an empty `data/`. `docker volume rm movie-data` starts over.
 
 The image does not contain `.env` or any secrets. The variables are passed in at run time.
 
