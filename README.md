@@ -2,6 +2,8 @@
 
 An ELT pipeline for movies released from 1 January 2018 through the day the job runs. It pulls data from [The Movie Database (TMDB)](https://www.themoviedb.org/) API into a local DuckDB warehouse, transforms and tests it with dbt, and publishes a star schema to Databricks for a Power BI dashboard.
 
+Link to dashboard: [Dashboard](https://app.powerbi.com/view?r=eyJrIjoiY2UyYzdlYjMtZWRmMy00ZTU4LTgyZTEtZjM1YWY1MTcwNmUxIiwidCI6ImVhNWI1ODBhLTIzMmEtNGUwNy05ZTJkLThjNjIwMGMxZDVmNCJ9)
+
 **Stack:** Python · DuckDB · dbt · Databricks · Power BI · Docker · GitHub Actions · Apache Airflow
 
 ## System design
@@ -160,6 +162,60 @@ sequenceDiagram
 - Two runs never overlap.
 - [`.github/workflows/ci.yml`](.github/workflows/ci.yml) runs on every push and pull request. It builds the image and checks that the Python compiles and that dbt can parse the project. It needs no secrets.
 - The same steps exist for local orchestration in Airflow: [`dags/movie_etl.py`](dags/movie_etl.py). If both schedules are on, both runs publish. That is harmless, because the tables are replaced, but you only need one.
+
+## Analysis
+
+The four pages below are the [Power BI report](https://app.powerbi.com/view?r=eyJrIjoiY2UyYzdlYjMtZWRmMy00ZTU4LTgyZTEtZjM1YWY1MTcwNmUxIiwidCI6ImVhNWI1ODBhLTIzMmEtNGUwNy05ZTJkLThjNjIwMGMxZDVmNCJ9). Money is summed from `fact_movie`, so each movie counts once. Genre charts read `bridge_movie_genre`, so a film with several genres appears in each of them.
+
+The published set is **9,672 movies** released from 1 January 2018, each with at least 50 TMDB votes. 2026 stops at the last pipeline run. Counts for 2024 onward are also light, because many new releases have not yet reached 50 votes.
+
+### Summary
+
+![Summary page: 9,672 movies, average rating 6.5, $79bn budget, $207bn revenue](./img/Summary.png)
+
+The average rating is **6.5**, the average runtime is **101 minutes**, and the films have **5.6 million** votes between them.
+
+Reported budget is **$79 billion** and reported revenue is **$207 billion**. Profit is **$118 billion** and overall ROI is **167.7%**. Profit and ROI use only movies where both budget and revenue are known. The headline budget and revenue each add every movie that has that one figure, including titles where the other figure is missing. An unknown amount is null, so it never enters an average as a zero.
+
+Releases ran at about 1,450 films in 2018 and 2019, fell to 1,112 in 2020, and stayed around 1,100–1,200 through 2023 (1,145, 1,203, 1,112). After that the vote filter shows through: 960 in 2024, 796 in 2025, and 454 so far in 2026.
+
+English is the original language of 57% of titles. French is about 10%, Spanish 7% and Italian 4%. The rest, about 22%, is spread across other languages.
+
+The highest grossing titles are franchises:
+
+| Title | Year | Budget | Revenue | ROI |
+| --- | --- | --- | --- | --- |
+| Avengers: Endgame | 2019 | $356m | $2.94bn | 727% |
+| Spider-Man: Brand New Day | 2026 | $225m | $2.52bn | 1,021% |
+| Avatar: The Way of Water | 2022 | $460m | $2.33bn | 408% |
+| Ne Zha 2 | 2025 | $80m | $2.27bn | 2,738% |
+| Avengers: Infinity War | 2018 | $300m | $2.05bn | 584% |
+
+*Ne Zha 2* is the one that breaks the pattern: a large gross on a mid-size budget. The top-rated card, *The Way to the Heart*, is the film with the highest `vote_average`. Every title counts equally in that ranking, from 50 votes upward.
+
+### Ratings by genre
+
+![Ratings by genre: Documentary, Animation and Music at 7.1, Horror at 5.9](./img/Ratings.png)
+
+Genre is where the ratings actually move. Documentary, Animation and Music average **7.1**. Horror, the lowest of the large genres, averages **5.9**. Drama is the most common tag (about 4,000 films), then Comedy (about 3,200) and Thriller (about 2,400).
+
+Rating and revenue describe different films. Documentary's 603 titles average 7.1 and about **$594 million** of revenue, with a popularity of 1.6. Animation (764 films, the same 7.1 average) accounts for about **$42 billion**. Family is close to that revenue, about **$43 billion**, at a 6.8 rating. A film tagged both Animation and Family sits in both totals, which is why the scorecard total stays the 9,672 movies in `fact_movie`.
+
+### Budget and revenue
+
+![Budget and revenue by year, with the 2020 collapse and profit recovering after](./img/Budget%20and%20Revenue.png)
+
+Profit was about **$22 billion** in 2018 and **$23 billion** in 2019, fell to about **$2 billion** in 2020, and then climbed back through the low tens of billions. In every year except 2020, total revenue sits well above total budget. On the scatter, most films sit under $100 million of budget. Past $200 million the points thin out, and revenue spreads widely at every budget.
+
+The ROI table answers a different question. Its top rows are micro-budget films: *Obsession* (2026) is listed at a budget under $1 million against about $525 million of revenue, a 69,840% ROI, and *Skinamarink* (2023) and *Freaks* (2019) follow the same shape, with budgets that round to zero on the page. ROI divides by budget, so a very small budget produces a huge ratio. The profit line is the read on the scale of the business. The ROI ranking is meaningful among films of a similar budget, which is where *Ne Zha 2* stands out against the other billion-dollar titles.
+
+### Releases by month
+
+![Releases by month and weekday, with a 2020 heatmap and a flat rating-by-month line](./img/Releases.png)
+
+**October** is the busiest month (1,101 releases), then September (1,032) and November (888). May is the quietest (640). **Friday** is the release day, about 3,400 films, against about 2,500 on Thursday and 2,100 on Wednesday. Saturday and Sunday together are under 800. Average rating by month only moves between 6.4 and 6.6, so the calendar shifts how many films come out, and leaves the scores almost flat.
+
+The year-by-month heatmap pins 2020 down to the spring. January and February match other years (116 and 111). March drops to 75, April to 45 and May to 41, and the autumn months return to a normal range. Those films have had years to pass the 50-vote filter, so that hole is the release calendar.
 
 ## Repository layout
 
