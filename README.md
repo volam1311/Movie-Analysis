@@ -6,7 +6,7 @@ An ELT pipeline for movies released from 1 January 2018 through the day the job 
 
 ## System design
 
-_Architecture diagrams will be added here._
+![System Design Diagram](./img/Movie%20Analysis%20System%20Design.png)
 
 ## Pipeline
 
